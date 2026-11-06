@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  ADMIN
+  CONSULTANT
+}
+
+enum Fuel {
+  PETROL
+  DIESEL
+  CNG
+  ELECTRIC
+}
+
+enum Transmission {
+  MANUAL
+  AUTOMATIC
+}
+
+enum UsedCarStatus {
+  AVAILABLE
+  BOOKED
+  SOLD
+}
+
+enum LeadSource {
+  WEBSITE
+  TEST_DRIVE
+  TRADE_IN
+  PORTAL_CSV
+  WALK_IN
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  TEST_DRIVE_BOOKED
+  NEGOTIATING
+  WON
+  LOST
+}
+
+enum BookingStatus {
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  showroomId   String?
+  createdAt    DateTime @default(now())
+
+  showroom Showroom?        @relation(fields: [showroomId], references: [id])
+  leads    Lead[]
+  rules    AssignmentRule[]
+}
+
+model Showroom {
+  id      String @id @default(cuid())
+  name    String
+  address String
+
+  users      User[]
+  demoCars   DemoCar[]
+  leads      Lead[]
+  rules      AssignmentRule[]
+}
+
+model City {
+  id   String @id @default(cuid())
+  name String @unique
+
+  prices VariantPrice[]
+}
+
+model Model {
+  id          String @id @default(cuid())
+  name        String
+  slug        String @unique
+  bodyType    String
+  description String
+
+  variants Variant[]
+  usedCars UsedCar[]
+  leads    Lead[]
+  rules    AssignmentRule[]
+}
+
+model Variant {
+  id           String       @id @default(cuid())
+  modelId      String
+  name         String
+  slug         String       @unique
+  fuel         Fuel
+  transmission Transmission
+  specs        Json
+  photos       String[]
+  colours      String[]
+
+  model    Model          @relation(fields: [modelId], references: [id])
+  prices   VariantPrice[]
+  demoCars DemoCar[]
+}
+
+// One row per variant and city. All money is in whole rupees (Int).
+model VariantPrice {
+  id          String   @id @default(cuid())
+  variantId   String
+  cityId      String
+  exShowroom  Int
+  roadTax     Int
+  insurance   Int
+  accessories Int
+  validUntil  DateTime
+
+  variant Variant @relation(fields: [variantId], references: [id])
+  city    City    @relation(fields: [cityId], references: [id])
+
+  @@unique([variantId, cityId])
+}
+
+model UsedCar {
+  id               String        @id @default(cuid())
+  stockId          String        @unique
+  slug             String        @unique
+  modelId          String
+  variantName      String
+  fuel             Fuel
+  year             Int
+  km               Int
+  owners           Int
+  price            Int
+  status           UsedCarStatus @default(AVAILABLE)
+  registrationNo   String // stored in full, always shown masked in the UI
+  inspectionReport Json
+  photos           String[]
+
+  model Model @relation(fields: [modelId], references: [id])
+}
+
+model DemoCar {
+  id         String @id @default(cuid())
+  variantId  String
+  showroomId String
+
+  variant  Variant   @relation(fields: [variantId], references: [id])
+  showroom Showroom  @relation(fields: [showroomId], references: [id])
+  bookings Booking[]
+}
+
+model Lead {
+  id                String     @id @default(cuid())
+  source            LeadSource
+  name              String
+  phone             String
+  email             String?
+  message           String?
+  interestedModelId String?
+  showroomId        String?
+  assignedToId      String?
+  status            LeadStatus @default(NEW)
+  consentGivenAt    DateTime?
+  optedOut          Boolean    @default(false)
+  createdAt         DateTime   @default(now())
+  firstContactedAt  DateTime?
+  aiSummary         String?
+  aiDraft           String?
+
+  interestedModel Model?    @relation(fields: [interestedModelId], references: [id])
+  showroom        Showroom? @relation(fields: [showroomId], references: [id])
+  assignedTo      User?     @relation(fields: [assignedToId], references: [id])
+  bookings        Booking[]
+
+  @@index([assignedToId, status])
+}
+
+model Booking {
+  id        String        @id @default(cuid())
+  leadId    String
+  demoCarId String
+  startTime DateTime
+  status    BookingStatus @default(CONFIRMED)
+
+  lead    Lead    @relation(fields: [leadId], references: [id])
+  demoCar DemoCar @relation(fields: [demoCarId], references: [id])
+
+  @@unique([demoCarId, startTime])
+}
+
+model AssignmentRule {
+  id         String @id @default(cuid())
+  showroomId String
+  modelId    String
+  userId     String
+
+  showroom Showroom @relation(fields: [showroomId], references: [id])
+  model    Model    @relation(fields: [modelId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@unique([showroomId, modelId, userId])
+}
